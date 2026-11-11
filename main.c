@@ -1430,7 +1430,7 @@ int main(int argc, char **argv) {
         }
     }
     if (!input_path) {
-        printf("Digite o caminho do arquivo .c ou .txt: ");
+        printf("Digite o caminho do arquivo .c: ");
         fflush(stdout);
         if (!fgets(filename,sizeof(filename),stdin)) return 2;
         filename[strcspn(filename,"\r\n")]='\0';

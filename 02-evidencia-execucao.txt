@@ -1,0 +1,143 @@
+﻿============================================================
+EVIDENCIA DA EXECUCAO DO COMPILADOR
+============================================================
+Projeto      : compilador-final-main (compilador didatico em C)
+Executavel   : main.exe
+Fonte        : main.c (1447 linhas)
+Compilador C : gcc (tdm64-4.9.2)
+Data         : 12/11/2026
+
+COMANDOS UTILIZADOS
+-------------------
+Compilacao:
+    gcc -std=c99 -Wall -Wextra -pedantic -o main.exe main.c
+    (observacao: o Makefile usa -std=c17; o gcc 4.9.2 nao suporta essa
+     opcao, por isso a compilacao foi feita com -std=c99)
+
+Execucao:
+    main.exe teste\codigo_teste_compilador.c > evidencia_saida.txt 2>&1
+
+Codigo de saida do processo: 1 (17 diagnosticos encontrados)
+Arquivo de saida bruto gerado pelo programa: evidencia_saida.txt
+
+------------------------------------------------------------
+ABAIXO: conteudo integral da saida do programa
+------------------------------------------------------------
+
+============================================================
+ANALISE DO ARQUIVO: teste\codigo_teste_compilador.c
+============================================================
+   1 | /* ARQUIVO DE TESTE - TRABALHO FINAL DE COMPILADORES
+   2 |    O compilador didatico dos alunos deve ler este arquivo,
+   3 |    identificar os problemas e continuar a analise ate o final.
+   4 | */
+   5 | 
+   6 | int idade = 25;
+   7 | float salario = 3500.50;
+   8 | char letra = 'A';
+   9 | 
+  10 | int resultado = 10 + 20;
+  11 | int dobro = 5 * 2;
+  12 | int neutro = resultado + 0;
+  13 | 
+  14 | int idade = 30;          // ERRO SEMANTICO: redeclaracao
+  15 | quantidade = 8;          // ERRO SEMANTICO: variavel nao declarada
+  16 | int nome = "Maria";      // ERRO SEMANTICO: tipos incompativeis
+  17 | 
+  18 | int total = 10 + 5       // ERRO SINTATICO: falta ;
+  19 | int = valor 20;          // ERRO SINTATICO: ordem invalida
+  20 | 
+  21 | int codigo = 10 @ 2;     // ERRO LEXICO: simbolo @ nao reconhecido
+  22 | 
+  23 | int x = 10;
+  24 | x = 20;                  // OPORTUNIDADE: atribuicao anterior pode ser codigo morto
+  25 | int y = 4 * 5;           // OPORTUNIDADE: constant folding -> 20
+  26 | int z = y + 0;           // OPORTUNIDADE: simplificacao algebrica -> y
+
+[ANALISE LEXICA]
+Linha 21, coluna 17 | ERRO LEXICO: caractere nao reconhecido '@'
+         21 | int codigo = 10 @ 2;     // ERRO LEXICO: simbolo @ nao reconhecido
+            |                 ^
+
+[ANALISE SINTATICA]
+Linha 15, coluna 1 | ERRO SINTATICO: declaracao externa inesperada: 'quantidade'
+         15 | quantidade = 8;          // ERRO SEMANTICO: variavel nao declarada
+            | ^
+Linha 15, coluna 14 | ERRO SINTATICO: declaracao externa inesperada: '8'
+         15 | quantidade = 8;          // ERRO SEMANTICO: variavel nao declarada
+            |              ^
+Linha 15, coluna 15 | ERRO SINTATICO: declaracao externa inesperada: ';'
+         15 | quantidade = 8;          // ERRO SEMANTICO: variavel nao declarada
+            |               ^
+Linha 18, coluna 19 | ERRO SINTATICO: esperado ';' ao final da instrucao (apos '5')
+         18 | int total = 10 + 5       // ERRO SINTATICO: falta ;
+            |                   ^
+Linha 19, coluna 5 | ERRO SINTATICO: identificador esperado depois do tipo
+         19 | int = valor 20;          // ERRO SINTATICO: ordem invalida
+            |     ^
+Linha 19, coluna 7 | ERRO SINTATICO: declaracao externa inesperada: 'valor'
+         19 | int = valor 20;          // ERRO SINTATICO: ordem invalida
+            |       ^
+Linha 19, coluna 13 | ERRO SINTATICO: declaracao externa inesperada: '20'
+         19 | int = valor 20;          // ERRO SINTATICO: ordem invalida
+            |             ^
+Linha 19, coluna 15 | ERRO SINTATICO: declaracao externa inesperada: ';'
+         19 | int = valor 20;          // ERRO SINTATICO: ordem invalida
+            |               ^
+Linha 21, coluna 17 | ERRO SINTATICO: esperado ';' ao final da instrucao (apos '10')
+         21 | int codigo = 10 @ 2;     // ERRO LEXICO: simbolo @ nao reconhecido
+            |                 ^
+Linha 21, coluna 19 | ERRO SINTATICO: declaracao externa inesperada: '2'
+         21 | int codigo = 10 @ 2;     // ERRO LEXICO: simbolo @ nao reconhecido
+            |                   ^
+Linha 21, coluna 20 | ERRO SINTATICO: declaracao externa inesperada: ';'
+         21 | int codigo = 10 @ 2;     // ERRO LEXICO: simbolo @ nao reconhecido
+            |                    ^
+Linha 24, coluna 1 | ERRO SINTATICO: declaracao externa inesperada: 'x'
+         24 | x = 20;                  // OPORTUNIDADE: atribuicao anterior pode ser codigo morto
+            | ^
+Linha 24, coluna 5 | ERRO SINTATICO: declaracao externa inesperada: '20'
+         24 | x = 20;                  // OPORTUNIDADE: atribuicao anterior pode ser codigo morto
+            |     ^
+Linha 24, coluna 7 | ERRO SINTATICO: declaracao externa inesperada: ';'
+         24 | x = 20;                  // OPORTUNIDADE: atribuicao anterior pode ser codigo morto
+            |       ^
+
+[ANALISE SEMANTICA]
+Linha 14, coluna 5 | ERRO SEMANTICO: identificador 'idade' ja declarado neste escopo
+         14 | int idade = 30;          // ERRO SEMANTICO: redeclaracao
+            |     ^
+Linha 16, coluna 1 | ERRO SEMANTICO: variavel 'nome' do tipo int recebe valor do tipo string
+         16 | int nome = "Maria";      // ERRO SEMANTICO: tipos incompativeis
+            | ^
+
+[OTIMIZACAO]
+Linha 10 | constant folding
+  Antes: 10 + 20
+  Sugestao: 30
+Linha 11 | constant folding
+  Antes: 5 * 2
+  Sugestao: 10
+Linha 12 | simplificacao algebrica
+  Antes: resultado + 0
+  Sugestao: resultado
+Linha 18 | constant folding
+  Antes: 10 + 5
+  Sugestao: 15
+Linha 25 | constant folding
+  Antes: 4 * 5
+  Sugestao: 20
+Linha 26 | simplificacao algebrica
+  Antes: y + 0
+  Sugestao: y
+
+============================================================
+RESUMO
+============================================================
+Erros lexicos:       1
+Erros sintaticos:    14
+Erros semanticos:    2
+Total de erros:      17
+Otimizacoes sugeridas: 6
+Estado: analise concluida com diagnosticos.
+

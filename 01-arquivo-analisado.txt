@@ -1,0 +1,86 @@
+ARQUIVO ANALISADO PELO SISTEMA
+==============================
+Arquivo: teste\codigo_teste_compilador.c
+Compilador: main.exe (fonte: main.c)
+Data da analise: 12/11/2026
+
+
+1. FINALIDADE DO ARQUIVO
+------------------------
+Arquivo de teste do Trabalho Final de Compiladores. Ele contem, em 26
+linhas, um subconjunto de C (declaracoes, atribuicoes e expressoes) com
+erros propositalmente inseridos em cada fase do compilador (lexico,
+sintatico e semantico) e, no final, trechos que devem ser aproveitados
+como oportunidades de otimizacao. O objetivo e forcar o compilador
+didatico a continuar a analise ate o fim do arquivo, mesmo depois de um
+erro, acumulando todos os diagnosticos em um unico relatorio.
+
+
+2. CONTEUDO LINHA A LINHA (resumo)
+----------------------------------
+Linha  6- 8: declaracoes validas de int idade, float salario, char letra.
+Linha 10-12: expressoes com operandos constantes / soma com zero.
+Linha 14    : ERRO SEMANTICO - redeclaracao de 'idade' no mesmo escopo.
+Linha 15    : ERRO SEMANTICO - variavel 'quantidade' nao declarada.
+Linha 16    : ERRO SEMANTICO - int recebe literal string ("Maria").
+Linha 18    : ERRO SINTATICO - falta ';' ao final da instrucao.
+Linha 19    : ERRO SINTATICO - ordem invalida ("int = valor 20").
+Linha 21    : ERRO LEXICO    - caractere '@' nao reconhecido.
+Linha 23-24 : atribuicao x = 20 sobrescreve x = 10 (codigo morto).
+Linha 25    : OPORTUNIDADE - constant folding (4 * 5 -> 20).
+Linha 26    : OPORTUNIDADE - simplificacao algebrica (y + 0 -> y).
+
+
+3. RESULTADO OBTIDO PELO COMPILADOR
+------------------------------------
+Execucao: main.exe teste\codigo_teste_compilador.c
+Codigo de saida: 1 (houveram diagnosticos)
+
+ERROS LEXICOS ......... 1
+  - Linha 21, coluna 17: caractere nao reconhecido '@'
+    (token T_INVALID emitido; analise prossegue)
+
+ERROS SINTATICOS ...... 14
+  - Linha 15 (3x): 'quantidade = 8;' nao e uma declaracao valida no
+    nivel externo -> "declaracao externa inesperada"
+  - Linha 18: esperado ';' ao final da instrucao (apos '5')
+  - Linha 19 (4x): 'int = valor 20;' -> identificador esperado depois
+    do tipo + tokens excedentes
+  - Linha 21 (3x): recuperacao de erro apos o '@' ilegal
+  - Linha 24 (3x): 'x = 20;' no nivel externo nao e declaracao valida
+    (atribuicao so e aceita dentro de funcao/bloco neste subconjunto)
+
+ERROS SEMANTICOS ...... 2
+  - Linha 14, coluna 5: identificador 'idade' ja declarado neste escopo
+  - Linha 16, coluna 1: variavel 'nome' do tipo int recebe valor do
+    tipo string
+
+OTIMIZACOES SUGERIDAS . 6
+  - Linha 10: constant folding 10 + 20 -> 30
+  - Linha 11: constant folding 5 * 2  -> 10
+  - Linha 12: simplificacao algebrica resultado + 0 -> resultado
+  - Linha 18: constant folding 10 + 5 -> 15
+  - Linha 25: constant folding 4 * 5 -> 20
+  - Linha 26: simplificacao algebrica y + 0 -> y
+
+TOTAL DE ERROS: 17   |   OTIMIZACOES: 6
+Estado: analise concluida com diagnosticos (o compilador nao abortou
+antes do fim do arquivo, como exige o enunciado).
+
+
+4. OBSERVACOES / LIMITACOES
+---------------------------
+a) A linha 24 ("x = 20;") esta no escopo global. Neste subconjunto de C
+   aceito por parse_external(), instrucoes no nivel externo precisam ser
+   declaracoes ou definicoes de funcao; por isso ela gera 3 erros
+   sintaticos em vez de alimentar diretamente a otimizacao de "atribuicao
+   sobrescrita". Para exercitar essa otimizacao, a atribuicao deve estar
+   dentro de um corpo de funcao (verificavel com teste\teste.c).
+
+b) Os erros sintaticos das linhas 15, 19, 21 e 24 sao um efeito colateral
+   da recuperacao de erros (synchronize/accept_semicolon): a analise
+   reporta o problema real e continua, preferindo varios diagnosticos a
+   parar na primeira falha.
+
+c) O relatorio completo, com o codigo-fonte numerado e o "caret" (^)
+   marcando a coluna de cada erro, esta gravado em evidencia_saida.txt.

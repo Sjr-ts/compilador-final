@@ -1,0 +1,214 @@
+DESCRICAO DE COMO CADA ETAPA FOI IMPLEMENTADA
+=============================================
+Fonte unica: main.c (1447 linhas, C99, sem bibliotecas externas)
+Estrutura geral: tudo e estatico; o estado compartilhado esta no
+typedef struct { ... } Compiler (main.c:55-60), que concentra o vetor de
+tokens, a posicao de leitura, a tabela de simbolos, os vetores de
+diagnosticos (errors[]) e de otimizacoes (opts[]) e os contadores por
+fase.
+
+
+1. ESTRUTURAS DE DADOS BASE
+---------------------------
+- TokenKind / Token (main.c:14-30): enum com ~80 tipos de token e o
+  struct token com texto, linha e coluna.
+- TokenVec (main.c:31-33): vetor dinamico (realloc dobrando a capacidade)
+  que guarda todos os tokens do arquivo.
+- Type / TypeKind (main.c:34-37): tipo primitivo (void, int, float, char,
+  string, struct, error) + flag de vetor e tag de struct.
+- Symbol (main.c:39-44): simbolo da tabela com nome, tipo, linha, nivel de
+  escopo, flags (funcao, const, definido, variadico), parametros, valor
+  constante conhecido, contagem de leituras e a ultima atribuicao vista
+  (usada pela otimizacao de atribuicao sobrescrita).
+- Diagnostic (main.c:45-47): linha, coluna, fase ("LEXICO"/"SINTATICO"/
+  "SEMANTICO") e mensagem.
+- Optimization (main.c:48-50): linha, tipo de otimizacao, texto "antes" e
+  texto "sugestao".
+- Expr (main.c:51-53): resultado do analisador de expressoes: tipo,
+  ponteiro para o simbolo, lvalue?, constante conhecida (value), flag de
+  erro sintatico e a representacao textual (repr) usada nos relatorios.
+
+Funcoes auxiliares: copy_text/format_text (copias seguras com limite),
+diagnostic() (registra e classifica por fase, main.c:110), optimization()
+(main.c:124), make_type/type_equal/type_assignable/type_name (regras de
+tipagem, main.c:75-109).
+
+
+2. ETAPA LEXICA - lex_source() (main.c:223-412)
+------------------------------------------------
+Analise descritiva (um "scan" manual) sobre a string lida do arquivo:
+- Controle de linha/coluna e de "inicio de linha" para descartar
+  espacos iniciais e diretrizes (#...) sem gerar token (main.c:227-231).
+- Comentarios: '//' ate a quebra de linha e '/* ... */' com verificacao
+  de fechamento (erro "comentario de bloco nao foi fechado").
+- Identificadores e palavras-chave: reconhece a sequencia
+  is_ident_start/is_ident_part e resolve a chave com keyword_kind()
+  (tabela de 19 palavras, main.c:186-196).
+- Literais numericos (main.c:259-333): decimal, hexadecimal com 0x, ponto
+  flutuante, expoente e/E, sufixos u/l/f; valida digitos octais invalidos,
+  expoente incompleto e sufixo malformado, emitindo T_INVALID quando
+  encontra problema.
+- Literais de string e caractere (main.c:335-370): valida fechamento,
+  sequencias de escape (tabela em strchr) e literal de caractere vazio.
+- Operadores (main.c:371-408): primeiro tenta os 23 operadores de dois
+  caracteres (<<=, ++, ==, ...) e depois os de um caractere via switch.
+  Qualquer caractere fora do conjunto (como '@', '$', '`') vira
+  "caractere nao reconhecido" + token T_INVALID.
+- Encerra com um token T_EOF.
+
+O token T_INVALID e a chave da recuperacao: ele permite que a etapa
+sintatica consuma o trecho ruim e siga em frente.
+
+
+3. ETAPA SINTATICA - parser descendente recursivo
+--------------------------------------------------
+Primitivas de consumo (main.c:413-423): peek/previous/check/advance_token/
+match/expect. expect() emite "esperado X antes de 'Y'".
+
+- Recuperacao de erros:
+  * synchronize() (main.c:470): descarta tokens ate achar um ';' ou o
+    inicio de uma instrucao, evitando cascata de erros.
+  * accept_semicolon() (main.c:477): reporta o ';' ausente apontando a
+    coluna correta (final do token anterior ou o token atual) e, se
+    necessario, sincroniza.
+
+- Expressoes:
+  * expr_precedence() (main.c:491): tabela de precedencia (atribuicao=1
+    ate * / %=11).
+  * parse_expression(min_prec) (main.c:715): algoritmo de precedencia
+    com descida recursiva; atribuicao e associativa a direita.
+  * parse_unary() (main.c:657): operadores unarios (- + ! ~ & * ++ --),
+    indexacao de vetor e pos-fixos ++/--.
+  * parse_primary() (main.c:544): literais, identificador (chamada de
+    funcao ou variavel), parentizacao e sizeof.
+  Cada no devolve um Expr com tipo + valor constante opcional +
+  representacao textual, o que ja fornece material para a analise
+  semantica e para as otimizacoes.
+
+- Declaracoes e comandos:
+  * parse_type() (main.c:862): const, int, float/double, char, void,
+    struct <tag>.
+  * parse_declaration() (main.c:922): lista de identificadores com
+    vetor opcional e inicializador (parse_initializer, que aceita lista
+    de chaves). Faz aqui a checagem de redeclaracao no mesmo escopo.
+  * parse_parameter_list() (main.c:963) e parse_function() (main.c:1000):
+    prototipos, conflito de assinatura, corpo com escopo proprio.
+  * parse_external() (main.c:1072): distingue struct, funcao e
+    declaracao no nivel externo.
+  * parse_statement() (main.c:1157): blocos, if/else, while, for, do,
+    return, break/continue, expressao+';'. switch/case sao detectados e
+    reportados como nao suportados.
+  * parse_if/while/for (main.c:1103-1156) validam que a condicao seja
+    escalar e controlam a profundidade de laco (loop_depth) - usada
+    depois pela reducao de forca.
+  * parse_program() (main.c:1220): instancia as funcoes built-ins
+    (printf, scanf, puts, putchar, getchar, strlen) e as constantes NULL
+    e EOF, depois repetir parse_external() ate o T_EOF, com protecao
+    contra estagnacao do cursor.
+
+Escopos: scope_enter()/scope_leave() (main.c:424-441) usam a lista de
+simbolos ligada ordenada por nivel de profundidade; ao sair de um escopo
+os simbolos sao removidos e, se ninguem leu a variavel, e gerada a
+sugestao de "eliminacao de codigo morto".
+
+
+4. ETAPA SEMANTICA (integrada ao parser)
+-----------------------------------------
+Nao ha passagem separada: as checagens acontecem em conjunto com a
+construcao da AST implicita, pois o parser ja tem tipo e simbolo em maos.
+
+- Tabela de simbolos: add_symbol/find_symbol/find_global (main.c:442-461)
+  - lista simples ligada; a busca e linear (suficiente para arquivos de
+    teste) e percorre do topo (escopo mais interno) para fora.
+- Redecalaracao: mesma linha de parse_declaration (main.c:944-956) -
+  compara apenas simbolos de escopo igual; em caso de conflito usa um
+  struct temporario para nao poluir a tabela.
+- Uso nao declarado: parse_primary (main.c:611-615).
+- Compatibilidade de tipos: type_assignable() (main.c:86-93) - regras de
+  conversao implicita (int/char -> float, char -> int) e erro quando ha
+  incompatibilidade; usado em inicializadores (check_initializer,
+  main.c:882), em atribuicoes (main.c:733) e em argumentos de funcao
+  (main.c:603).
+- Chamadas de funcao: arity exata para funcoes nao variadicas e numero
+  minimo de argumentos para as variadicas (main.c:594-607).
+- Expressoes: operandos numericos obrigatorios para aritmetica, operandos
+  inteiros para % e operadores bit a bit, divisao por zero em tempo de
+  compilacao, lado esquerdo de atribuicao deve ser lvalue, constante nao
+  pode ser alterada, ++/-- exigem variavel modificavel (main.c:657-734).
+- return: compativel com o tipo de retorno da funcao; void nao retorna
+  valor; return fora de funcao e erro (main.c:1180-1192).
+- break/continue fora de laco: main.c:1194-1197.
+- Funcoes: redeclaracao conflitante, definicao duplicada, parametro
+  duplicado (main.c:1005-1046).
+
+Recuperacao de erros: as flags had_lex_error/had_syntax_error e o uso de
+TY_ERROR ("tipo invalido") fazem com que erros ja reportados nao gerem
+"erros em cascata" - type_assignable aceita qualquer coisa quando um dos
+lados e TY_ERROR.
+
+
+5. OTIMIZACOES / ANALISE DE OPORTUNIDADES
+------------------------------------------
+Registradas com optimization() e impressas em [OTIMIZACAO]:
+- Constant folding (main.c:775-828): quando os dois lados sao constantes,
+  o valor e calculado em tempo de compilacao (com checagem de overflow,
+  divisao por zero, shift invalido) e um sugestao "antes -> depois" e
+  gravada.
+- Simplificacao algebrica (main.c:829-842): x+0, 0+x, x-0, x*1, 1*x, x/1.
+- Propagacao de constantes (main.c:624-636): const com valor conhecido
+  usada em expressao gera a sugestao de substituicao (uma vez por nome).
+- Eliminacao de subexpressao comum (remember_expression, main.c:523-534):
+  guarda a representacao das expressoes nao constantes ja vistas; uma
+  repeticao gera a sugestao de reutilizar o resultado (reiniciado a cada
+  chamada de funcao/comando).
+- Eliminacao de atribuicao sobrescrita (record_assignment, main.c:146-166):
+  guarda a ultima atribuicao de cada simbolo; se o valor era sobrescrito
+  antes de qualquer leitura, sugere remover a atribuicao anterior.
+  remove_overwrite_suggestions() descarta sugestoes obsoletas quando a
+  variavel volta a ser usada.
+- Eliminacao de codigo morto (scope_leave, main.c:425-438): variavel
+  inicializada e nunca lida dentro do escopo.
+- Reducao de forca (main.c:843-852): multiplicacao da variavel de
+  inducao do laco por constante dentro de um for/while.
+
+
+6. ENTRADA, RELATORIO E MAIN
+-----------------------------
+- read_file() (main.c:1244): abre em binario, mede o tamanho, le tudo e
+  remove BOM UTF-8.
+- resolve_source_file() (main.c:1357): procura o arquivo no caminho
+  informado, na pasta atual, em teste/ e em ate 4 niveis acima do
+  diretorio do executavel - por isso "main.exe teste\simples.c" e
+  "main.exe simples.c" funcionam.
+- run_file() (main.c:1393): zera o Compiler, chama lex_source() ->
+  parse_program() -> print_report(), libera memoria e retorna a soma
+  dos erros (0 = sem erros, 1 = com diagnosticos, 2 = arquivo nao
+  encontrado).
+- print_report() (main.c:1283): imprime o fonte numerado, depois as tres
+  secoes de analise (com trecho da linha e marcador '^' via
+  print_diagnostic_excerpt, main.c:1270), a secao de otimizacao e o
+  resumo com contadores.
+- main() (main.c:1416): interpreta "--pause", "--help" e o caminho do
+  arquivo; sem argumento, pergunta o caminho interativamente e espera
+  ENTER no final.
+
+
+7. FLUXO COMPLETO
+-----------------
+   arquivo.c
+      |
+      v
+ read_file()  ----->  string fonte
+      |
+      v
+ lex_source() ----->  TokenVec (+ erros LEXICO)
+      |
+      v
+ parse_program() -->  parser descendente + tabela de simbolos
+      |                 + checagens semanticas
+      |                 + registro de otimizacoes
+      v
+ print_report() --->  stdout (e evidencia_saida.txt)
+      |
+      v
+ exit code: 0 | 1 | 2
